@@ -14,3 +14,5 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     registerSW({ immediate: true })
   })
 }
+
+void navigator.storage?.persist?.().catch(() => {})
