@@ -35,7 +35,7 @@ $V launch
 
 Ready means `https://127.0.0.1:<port>/` served `<title>型紙チェック</title>`. The run becomes `latest`; every other command takes an optional run id and defaults to it. The dev server serves the working tree live (HMR), so edits show up without relaunching. Logs: `<run-dir>/vite.log`.
 
-`vite.config.ts` reads `certs/dev.pem` and `certs/dev-key.pem` (gitignored) unconditionally. If they are missing, `launch` generates throwaway self-signed ones, says so, and `cleanup` deletes them. Real certs are never touched.
+`vite.config.ts` serves HTTPS only when `certs/dev.pem` and `certs/dev-key.pem` (gitignored) exist, and the harness URLs are `https://`. If the certs are missing, `launch` generates throwaway self-signed ones, says so, and `cleanup` deletes them. Real certs are never touched. The dev server serves at `/`; production builds and `vite preview` serve under `/katagami/` (GitHub Pages).
 
 ## Doctor
 
