@@ -14,7 +14,7 @@ if (!KATAGAMI_URL || !KATAGAMI_RUN_DIR || !KATAGAMI_TOOLS) {
   console.error('drive.mjs must be started by `katagami-verify drive`')
   process.exit(2)
 }
-const { chromium } = createRequire(path.join(KATAGAMI_TOOLS, 'package.json'))('playwright')
+const { chromium, devices } = createRequire(path.join(KATAGAMI_TOOLS, 'package.json'))('playwright')
 
 const scenarioPath = path.resolve(process.argv[2])
 const scenarioName = path.basename(scenarioPath, '.mjs')
@@ -33,14 +33,29 @@ const FIXTURE = { ...GEOMETRY, path: path.join(KATAGAMI_SKILL_DIR, 'fixtures', '
 // IndexedDB lives in the browser profile. Each drive starts empty unless PROFILE=<name>
 // names a profile to reuse (e.g. to inspect state a previous drive left behind).
 const profileDir = path.join(KATAGAMI_RUN_DIR, 'profile', process.env.PROFILE || `${scenarioName}-${stamp}`)
+// DEVICE=iphone emulates an iPhone 13 (390×664, touch, mobile viewport) in Chromium.
+// The default is a 430×932 desktop-input window, which every shipped scenario except
+// mobile-trace assumes.
+const DEVICES = {
+  iphone: () => {
+    const { defaultBrowserType: _, ...iphone } = devices['iPhone 13']
+    return iphone
+  },
+  desktop: () => ({ viewport: { width: 430, height: 932 }, deviceScaleFactor: 2 }),
+}
+const deviceName = process.env.DEVICE || 'desktop'
+if (!DEVICES[deviceName]) {
+  console.error(`unknown DEVICE=${deviceName} (known: ${Object.keys(DEVICES).join(', ')})`)
+  process.exit(2)
+}
 const context = await chromium.launchPersistentContext(profileDir, {
   headless: process.env.HEADED !== '1',
   ignoreHTTPSErrors: true,
-  viewport: { width: 430, height: 932 },
-  deviceScaleFactor: 2,
   locale: 'ja-JP',
+  ...DEVICES[deviceName](),
 })
 const page = context.pages()[0] ?? (await context.newPage())
+const cdp = await context.newCDPSession(page)
 
 let dialogPolicy = 'accept'
 page.on('dialog', async (d) => {
@@ -50,11 +65,18 @@ page.on('dialog', async (d) => {
   dialogPolicy = 'accept'
 })
 page.on('pageerror', (e) => log(`PAGE ERROR: ${e.message}`))
+page.on('load', () => log(`document load ${page.url()}`))
 page.on('console', (m) => {
   if (m.type() === 'error') log(`console.error: ${m.text()}`)
 })
 
+async function touchEvent(type, touchPoints) {
+  await cdp.send('Input.dispatchTouchEvent', { type, touchPoints })
+  await page.waitForTimeout(16)
+}
+
 let shotN = 0
+const failedChecks = []
 const h = {
   log,
   step: (label) => log(`STEP ${label}`),
@@ -113,17 +135,81 @@ const h = {
     log(`ok: ${msg}`)
   },
 
+  /** Like assert, but the scenario keeps going; the run still fails at the end. */
+  check(cond, msg) {
+    if (cond) {
+      log(`ok: ${msg}`)
+    } else {
+      failedChecks.push(msg)
+      log(`CHECK FAILED: ${msg}`)
+    }
+  },
+
   /**
    * Tap a photo pixel on the calibration/trace Konva canvas. Assumes the fitted view
    * (the default, or after pressing 全体表示): stage at (0,0), scale = canvas width / photo width.
+   * With DEVICE=iphone it is a real touch tap; otherwise a mouse click.
    */
   async tapPhoto(x, y) {
+    const [vx, vy] = await h.photoToViewport(x, y)
+    if (deviceName === 'iphone') {
+      await h.touch.tap(vx, vy)
+    } else {
+      await page.mouse.click(vx, vy)
+      await page.waitForTimeout(50)
+    }
+  },
+
+  /** Viewport CSS px of a photo pixel on the calibration/trace canvas, in the fitted view. */
+  async photoToViewport(x, y) {
     const canvas = page.locator('.canvas-container canvas').first()
     await canvas.waitFor()
     const box = await canvas.boundingBox()
     const s = box.width / FIXTURE.width
-    await page.mouse.click(box.x + x * s, box.y + y * s)
-    await page.waitForTimeout(50)
+    return [box.x + x * s, box.y + y * s]
+  },
+
+  // Real touch input through CDP Input.dispatchTouchEvent (needs DEVICE=iphone or another
+  // hasTouch context). Coordinates are viewport CSS px; the browser runs its own
+  // scroll/zoom decisions on these, unlike page.mouse.
+  touch: {
+    async tap(x, y) {
+      await touchEvent('touchStart', [{ x, y, id: 0 }])
+      await touchEvent('touchEnd', [])
+      await page.waitForTimeout(100)
+    },
+
+    async drag([x0, y0], [x1, y1], { steps = 12 } = {}) {
+      await touchEvent('touchStart', [{ x: x0, y: y0, id: 0 }])
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        await touchEvent('touchMove', [{ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, id: 0 }])
+      }
+      await touchEvent('touchEnd', [])
+      await page.waitForTimeout(300)
+    },
+
+    /** One finger down at from and up at to with no touchMove between, as when iOS stops delivering touchmove once it scrolls natively. */
+    async lift([x0, y0], [x1, y1]) {
+      await touchEvent('touchStart', [{ x: x0, y: y0, id: 0 }])
+      await touchEvent('touchEnd', [{ x: x1, y: y1, id: 0 }])
+      await page.waitForTimeout(100)
+    },
+
+    /** Two fingers on a horizontal line through center, spread from fromDist to toDist px apart. */
+    async pinch([cx, cy], fromDist, toDist, { steps = 12, pan = [0, 0] } = {}) {
+      const fingers = (dist, t) => [
+        { x: cx - dist / 2 + pan[0] * t, y: cy + pan[1] * t, id: 0 },
+        { x: cx + dist / 2 + pan[0] * t, y: cy + pan[1] * t, id: 1 },
+      ]
+      await touchEvent('touchStart', fingers(fromDist, 0))
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        await touchEvent('touchMove', fingers(fromDist + (toDist - fromDist) * t, t))
+      }
+      await touchEvent('touchEnd', [])
+      await page.waitForTimeout(300)
+    },
   },
 
   /** Read-only dump of the app's IndexedDB ('katagami'), image data URLs truncated. */
@@ -168,6 +254,9 @@ let code = 0
 try {
   const { default: run } = await import(pathToFileURL(scenarioPath))
   await run({ page, h, flows, FIXTURE })
+  if (failedChecks.length) {
+    throw new Error(`${failedChecks.length} check(s) failed:\n  - ${failedChecks.join('\n  - ')}`)
+  }
   log('RESULT PASS')
 } catch (err) {
   code = 1

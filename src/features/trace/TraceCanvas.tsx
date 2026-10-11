@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Stage, Layer, Image as KonvaImage, Line } from 'react-konva'
-import type Konva from 'konva'
 import { db, cascadeRemovePiece } from '../../db'
 import { useProjectStore } from '../../store/projectStore'
 import type { Photo, Piece, PieceCutMode, Point } from '../../types'
@@ -19,6 +18,7 @@ import { useZoomablePhotoStage } from '../../hooks/useZoomablePhotoStage'
 import { VertexHandle } from '../../lib/canvas/vertexHandle'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
+import { BottomActionBar } from '../../components/BottomActionBar'
 
 type Props = {
   photo: Photo
@@ -45,30 +45,22 @@ export function TraceCanvas({ photo, existingPieces, onPieceAdded }: Props) {
     cutMode: PieceCutMode
   } | null>(null)
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
   const addPiece = useProjectStore((s) => s.addPiece)
   const updatePiece = useProjectStore((s) => s.updatePiece)
   const removePiece = useProjectStore((s) => s.removePiece)
   const image = usePhotoImage(photo.imageDataUrl)
 
-  const {
-    containerRef,
-    stageRef,
-    viewport,
-    stageScale,
-    stageDraggable,
-    stageDragDistance,
-    wasStageDraggedRef,
-    fitView,
-    zoomIn,
-    zoomOut,
-    handleStagePointerDown,
-    handleStageDragStart,
-    handleStageDragMove,
-    handleStageDragEnd,
-    getImagePoint,
-  } = useZoomablePhotoStage(photo.width, photo.height)
-
   const calibration = photo.calibration
+  const { containerRef, stageRef, viewport, stageScale, fitView, zoomIn, zoomOut, stageProps } =
+    useZoomablePhotoStage(photo.width, photo.height, (point) => {
+      if (!calibration) return
+      setVertices((prev) => {
+        setSelectedIndex(prev.length)
+        return [...prev, point]
+      })
+    })
+
   const strokeSize = 2 / stageScale
 
   const cmVertices = useMemo(() => {
@@ -110,20 +102,6 @@ export function TraceCanvas({ photo, existingPieces, onPieceAdded }: Props) {
       .slice(0, 2)
       .map((v) => cmPointToPixel(v, calibration.pixelsPerCm))
   }, [selectedPiece, calibration])
-
-  function handleBackgroundTap(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
-    if (!calibration || wasStageDraggedRef.current) return
-    const className = e.target.getClassName()
-    if (className !== 'Image' && className !== 'Stage') return
-
-    const imagePoint = getImagePoint()
-    if (!imagePoint) return
-
-    setVertices((prev) => {
-      setSelectedIndex(prev.length)
-      return [...prev, imagePoint]
-    })
-  }
 
   function updateVertex(index: number, point: Point) {
     setVertices((prev) => prev.map((v, i) => (i === index ? point : v)))
@@ -335,9 +313,16 @@ export function TraceCanvas({ photo, existingPieces, onPieceAdded }: Props) {
   const displayedFoldLinePreview = isTracing ? foldLinePreview : selectedFoldLinePreview
   const previewPoints = displayedExpansionPreview?.flatMap((p) => [p.x, p.y]) ?? []
   const canSave =
-    Boolean(cmVertices && isValidClosedPolygon(cmVertices)) &&
-    pieceName.trim() &&
-    (!isEditing || unsavedEdits)
+    Boolean(cmVertices && isValidClosedPolygon(cmVertices)) && (!isEditing || unsavedEdits)
+
+  function handlePrimary() {
+    if (pieceName.trim()) {
+      void savePiece()
+      return
+    }
+    nameInputRef.current?.focus({ preventScroll: true })
+    nameInputRef.current?.scrollIntoView({ block: 'center' })
+  }
 
   const traceStatusMessage =
     cutMode === 'foldCenter'
@@ -362,19 +347,6 @@ export function TraceCanvas({ photo, existingPieces, onPieceAdded }: Props) {
         </Button>
       </div>
 
-      <div className="mb-3 flex gap-2">
-        <Button variant="ghost" onClick={undoVertex} className="flex-1 text-xs py-2">
-          1点戻す
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={isEditing ? cancelEditing : clearVertices}
-          className="flex-1 text-xs py-2"
-        >
-          {isEditing ? 'キャンセル' : 'クリア'}
-        </Button>
-      </div>
-
       <div
         ref={containerRef}
         className="canvas-container mb-4 w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
@@ -391,18 +363,12 @@ export function TraceCanvas({ photo, existingPieces, onPieceAdded }: Props) {
             ref={stageRef}
             width={viewport.width}
             height={viewport.height}
-            draggable={stageDraggable}
-            dragDistance={stageDragDistance}
-            onPointerDown={handleStagePointerDown}
-            onDragStart={handleStageDragStart}
-            onDragMove={handleStageDragMove}
-            onDragEnd={handleStageDragEnd}
-            onClick={handleBackgroundTap}
-            onTap={handleBackgroundTap}
+            {...stageProps}
           >
             <Layer>
               <KonvaImage
                 image={image}
+                preventDefault={false}
                 width={photo.width}
                 height={photo.height}
               />
@@ -579,6 +545,7 @@ export function TraceCanvas({ photo, existingPieces, onPieceAdded }: Props) {
       )}
 
       <Input
+        ref={nameInputRef}
         label="パーツ名"
         placeholder="例: 前身頃"
         value={pieceName}
@@ -611,9 +578,21 @@ export function TraceCanvas({ photo, existingPieces, onPieceAdded }: Props) {
         )}
       </div>
 
-      <Button fullWidth disabled={!canSave} onClick={savePiece}>
-        {isEditing ? '変更を保存' : 'パーツを保存'}
-      </Button>
+      <BottomActionBar>
+        <Button variant="secondary" onClick={undoVertex} className="flex-1 whitespace-nowrap px-2">
+          1点戻す
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={isEditing ? cancelEditing : clearVertices}
+          className="flex-1 whitespace-nowrap px-2"
+        >
+          {isEditing ? 'キャンセル' : 'クリア'}
+        </Button>
+        <Button className="flex-[2] whitespace-nowrap" disabled={!canSave} onClick={handlePrimary}>
+          {isEditing ? '変更を保存' : 'パーツを保存'}
+        </Button>
+      </BottomActionBar>
     </div>
   )
 }

@@ -3,7 +3,10 @@ import type { Point } from '../../types'
 
 export const STAGE_DRAG_DISTANCE = 10
 
-export function pointerToImage(stage: Konva.Stage): Point | null {
+/** Konva name of the hit area of a draggable vertex; touches on it never scroll or add points. */
+export const VERTEX_HANDLE_NAME = 'vertex-handle'
+
+function pointerToImage(stage: Konva.Stage): Point | null {
   const pos = stage.getPointerPosition()
   if (!pos) return null
   const transform = stage.getAbsoluteTransform().copy()
@@ -62,24 +65,6 @@ export function isClientPointInRect(
   )
 }
 
-export function getStagePositionBounds(
-  stage: Konva.Stage,
-  viewportWidth: number,
-  viewportHeight: number,
-  photoWidth: number,
-  photoHeight: number,
-) {
-  const scale = stage.scaleX()
-  const scaledW = photoWidth * scale
-  const scaledH = photoHeight * scale
-  return {
-    lowX: Math.min(viewportWidth - scaledW, 0),
-    highX: Math.max(viewportWidth - scaledW, 0),
-    lowY: Math.min(viewportHeight - scaledH, 0),
-    highY: Math.max(viewportHeight - scaledH, 0),
-  }
-}
-
 const PAN_EDGE_EPS = 0.5
 
 /** Returns false when vertical wheel should scroll the page instead of panning the image. */
@@ -112,18 +97,59 @@ export function clampStagePosition(
   photoWidth: number,
   photoHeight: number,
 ): void {
-  const { lowX, highX, lowY, highY } = getStagePositionBounds(
-    stage,
-    viewportWidth,
-    viewportHeight,
-    photoWidth,
-    photoHeight,
+  const { x, y } = clampView(
+    { scale: stage.scaleX(), x: stage.x(), y: stage.y() },
+    { width: viewportWidth, height: viewportHeight },
+    { width: photoWidth, height: photoHeight },
   )
+  stage.position({ x, y })
+}
 
-  stage.position({
-    x: Math.min(highX, Math.max(lowX, stage.x())),
-    y: Math.min(highY, Math.max(lowY, stage.y())),
-  })
+/** Scale and position of the stage: a photo pixel p is drawn at p * scale + (x, y). */
+export type StageView = { scale: number; x: number; y: number }
+type Size = { width: number; height: number }
+export type TouchPair = readonly [Point, Point]
+
+/** Photo pixel under a point given in stage-container coordinates. */
+export function viewToImage(view: StageView, point: Point): Point {
+  return {
+    x: (point.x - view.x) / view.scale,
+    y: (point.y - view.y) / view.scale,
+  }
+}
+
+/** Keeps the photo covering the viewport when it is larger, and inside it when smaller. */
+export function clampView(view: StageView, viewport: Size, photo: Size): StageView {
+  const clampAxis = (pos: number, viewportLength: number, photoLength: number) => {
+    const slack = viewportLength - photoLength * view.scale
+    return Math.min(Math.max(slack, 0), Math.max(Math.min(slack, 0), pos))
+  }
+  return {
+    scale: view.scale,
+    x: clampAxis(view.x, viewport.width, photo.width),
+    y: clampAxis(view.y, viewport.height, photo.height),
+  }
+}
+
+function midpoint([a, b]: TouchPair): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+function distance([a, b]: TouchPair): number {
+  return Math.hypot(b.x - a.x, b.y - a.y)
+}
+
+/**
+ * View after two fingers move from `from` to `to`, starting at `start`: the scale follows
+ * the finger spread and the photo pixel that was under the midpoint stays under it.
+ */
+export function pinchView(start: StageView, from: TouchPair, to: TouchPair): StageView {
+  const anchor = viewToImage(start, midpoint(from))
+  const startDistance = distance(from)
+  const ratio = startDistance > 0 ? distance(to) / startDistance : 1
+  const scale = clampZoom(start.scale * ratio)
+  const mid = midpoint(to)
+  return { scale, x: mid.x - anchor.x * scale, y: mid.y - anchor.y * scale }
 }
 
 export function zoomStageAtPoint(

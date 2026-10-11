@@ -14,6 +14,10 @@ Inside a 型紙プロジェクト the user moves through three steps: 写真 (ad
 - `trace-edit` uses `編集` → drag vertices → `変更を保存`, or `キャンセル` with a discard confirmation.
 - `trace-delete` uses `選択したパーツを削除` with a confirmation. Deleting a source also deletes its mirror copies.
 - `trace-multi-photo` uses `別の写真を追加`, then the photo thumbnails switch the active photo.
+- `trace-touch-scroll`: on a phone, a one-finger drag over the photo background scrolls the page. The stage never pans and no point is added. A tap that barely moves adds exactly one point.
+- `trace-touch-pinch`: two fingers on the calibration or trace canvas pinch-zoom around their midpoint and pan with it. The page neither scrolls nor zooms, and lifting the fingers adds no point. Pinching elsewhere on the page zooms the page, since the viewport meta no longer blocks it.
+- `trace-touch-handle`: a one-finger drag on a vertex handle moves the point without scrolling.
+- `trace-bottom-bar`: the step's core actions sit in a bar fixed to the viewport bottom. 校正 has `校正を保存` / `校正を更新`, plus `キャンセル` when redoing. トレース has `1点戻す`, `クリア` / `キャンセル`, and `パーツを保存` / `変更を保存`. With a valid polygon and an empty name, the primary focuses `パーツ名` and scrolls it into view instead of saving.
 
 ## How to get to it (user POV)
 
@@ -36,14 +40,18 @@ Preconditions:
 - **Delete.** With the copy selected, click `選択したパーツを削除`. The confirm dialog is logged and the count drops back.
 - **Edit.** Click `button "前身頃を編集"`, drag a vertex with `page.mouse`, then `変更を保存`. The DB vertices change. Use `h.dismissNextDialog()` to test the cancel path.
 - **Second view.** Run `h.goto('/patterns/<id>')`. The 写真 step shows the thumbnail labelled `校正済`. `h.readDb()` holds the photo at 960×720 and the pieces.
+- **Touch (phone).** Run with `DEVICE=iphone`. Swipe the background with `h.touch.drag` and compare `window.scrollY`, the `頂点: N点` text, and `canvas.screenshot()` bytes. Pinch the calibration canvas with `h.touch.pinch(center, 80, 160, { pan: [40, 30] })`, then tap two points a known screen distance apart, centred on the canvas. The saved `pixelsPerCm` equals distance / (fitScale × 2) / cm, which proves the zoom without reading internals. The midpoint of the saved `pointA`/`pointB` is the photo pixel first under the centre minus pan / (fitScale × 2), which proves the pan. Drag a handle in edit mode with `h.touch.drag` and read the saved vertices.
+- **Proof.** `DEVICE=iphone $V drive mobile-trace` covers touch scroll, pinch, handle drag, the bottom bar, the empty-name focus, and the ≥44px tap targets on the pattern and layout screens.
 - **Proof.** `$V drive pattern-trace` covers photo, calibration, trace, mirror copy, delete, and the second view. Fold center, edit, recalibration, and camera input need a custom scenario.
 
 ## Gotchas
 
 - Canvas taps assume the fitted view. After `＋ 拡大` or a drag-pan, press `全体表示` before `h.tapPhoto`.
 - A tap within a vertex handle's radius selects that handle instead of adding a point. Keep vertices well apart.
-- Background taps only register on the image or stage. A drag over 10 px pans instead of tapping.
-- `パーツを保存` stays disabled until the polygon is valid and the name is non-empty. While editing, it stays disabled until something changes.
+- Background taps only register on the image or stage. A mouse drag over 10 px pans instead of tapping. A touch that moves over 10 px becomes a page scroll instead of a tap.
+- `page.mouse` never exercises the touch path. Touch behaviour needs `DEVICE=iphone` and `h.touch.*` (CDP `Input.dispatchTouchEvent`). Playwright's `locator.tap()` also works there. This is Chromium's touch pipeline, not WebKit's, so iOS Safari's `touch-action` handling and gesture events stay unverified.
+- The bottom bar is `position: fixed`, so full-page screenshots draw it (and the sticky header) at their viewport position inside the stitched image, sometimes over page content. Check visibility with `boundingBox()` against `page.viewportSize()` and `document.elementFromPoint`, not from the PNG.
+- `パーツを保存` stays disabled until the polygon is valid. While editing, it stays disabled until something changes. With a valid polygon and an empty name it is enabled, and pressing it focuses `パーツ名` and saves nothing.
 - `カメラで撮影` opens the same kind of file input with `capture`. Headless Chromium has no camera, so drive it with the file chooser too, and say the camera itself is unverified.
 - Recalibrating rescales the stored cm vertices of that photo's pieces. Assert the piece size again after `校正を更新`.
 - The 写真 step stays current after a reload even for calibrated projects. Navigate with the pills.

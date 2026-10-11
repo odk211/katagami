@@ -38,3 +38,7 @@ textarea {
   touch-action: pan-y;
   user-select: none;
 }
+
+main:has(.bottom-action-bar) {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+}

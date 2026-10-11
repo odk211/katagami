@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Stage, Layer, Image as KonvaImage, Line } from 'react-konva'
-import type Konva from 'konva'
 import { db } from '../../db'
 import { useProjectStore } from '../../store/projectStore'
 import type { Calibration, Photo, Point } from '../../types'
@@ -10,6 +9,7 @@ import { useZoomablePhotoStage } from '../../hooks/useZoomablePhotoStage'
 import { VertexHandle } from '../../lib/canvas/vertexHandle'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
+import { BottomActionBar } from '../../components/BottomActionBar'
 
 type Props = {
   photo: Photo
@@ -37,35 +37,13 @@ export function CalibrationCanvas({
   const updatePiece = useProjectStore((s) => s.updatePiece)
   const image = usePhotoImage(photo.imageDataUrl)
 
-  const {
-    containerRef,
-    stageRef,
-    viewport,
-    stageScale,
-    stageDraggable,
-    stageDragDistance,
-    wasStageDraggedRef,
-    fitView,
-    zoomIn,
-    zoomOut,
-    handleStagePointerDown,
-    handleStageDragStart,
-    handleStageDragMove,
-    handleStageDragEnd,
-    getImagePoint,
-  } = useZoomablePhotoStage(photo.width, photo.height)
+  const { containerRef, stageRef, viewport, stageScale, fitView, zoomIn, zoomOut, stageProps } =
+    useZoomablePhotoStage(photo.width, photo.height, (point) => {
+      if (points.length >= 2 || saving) return
+      setPoints((prev) => [...prev, point])
+    })
 
   const strokeSize = 2 / stageScale
-
-  function handleBackgroundTap(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
-    if (points.length >= 2 || saving || wasStageDraggedRef.current) return
-    const className = e.target.getClassName()
-    if (className !== 'Image' && className !== 'Stage') return
-
-    const imagePoint = getImagePoint()
-    if (!imagePoint) return
-    setPoints((prev) => [...prev, imagePoint])
-  }
 
   async function handleSave() {
     if (points.length !== 2 || !lengthCm || saving) return
@@ -107,8 +85,8 @@ export function CalibrationCanvas({
     <div>
       <p className="mb-3 text-sm text-gray-600">
         {isRedo
-          ? '校正をやり直します。ドラッグで移動、＋／－ボタンで拡大縮小できます。'
-          : '寸法ラベル付き辺の両端をタップし、実寸（cm）を入力してください。ドラッグで移動、＋／－ボタンで拡大縮小できます。'}
+          ? '校正をやり直します。2本指（マウスはドラッグ）で移動、ピンチか＋／－ボタンで拡大縮小できます。'
+          : '寸法ラベル付き辺の両端をタップし、実寸（cm）を入力してください。2本指（マウスはドラッグ）で移動、ピンチか＋／－ボタンで拡大縮小できます。'}
       </p>
       {isRedo && (
         <p className="mb-3 text-xs text-amber-700 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
@@ -141,18 +119,12 @@ export function CalibrationCanvas({
             ref={stageRef}
             width={viewport.width}
             height={viewport.height}
-            draggable={stageDraggable}
-            dragDistance={stageDragDistance}
-            onPointerDown={handleStagePointerDown}
-            onDragStart={handleStageDragStart}
-            onDragMove={handleStageDragMove}
-            onDragEnd={handleStageDragEnd}
-            onClick={handleBackgroundTap}
-            onTap={handleBackgroundTap}
+            {...stageProps}
           >
             <Layer>
               <KonvaImage
                 image={image}
+                preventDefault={false}
                 width={photo.width}
                 height={photo.height}
               />
@@ -206,20 +178,20 @@ export function CalibrationCanvas({
         className="mb-4"
       />
 
-      <div className="space-y-2">
+      <BottomActionBar>
+        {onCancel && (
+          <Button variant="ghost" className="flex-1" onClick={onCancel}>
+            キャンセル
+          </Button>
+        )}
         <Button
-          fullWidth
+          className="flex-[2]"
           disabled={points.length !== 2 || !lengthCm || parseFloat(lengthCm) <= 0 || saving}
           onClick={handleSave}
         >
           {saving ? '保存中…' : isRedo ? '校正を更新' : '校正を保存'}
         </Button>
-        {onCancel && (
-          <Button fullWidth variant="ghost" onClick={onCancel}>
-            キャンセル
-          </Button>
-        )}
-      </div>
+      </BottomActionBar>
     </div>
   )
 }

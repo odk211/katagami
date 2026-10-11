@@ -51,9 +51,12 @@ Checks: vite pid alive, the port's listener **is that pid**, the URL serves the 
 $V drive <scenario>            # name from scenarios/, or a path to any .mjs
 $V drive layout-fit
 HEADED=1 $V drive pattern-trace    # watch it
+DEVICE=iphone $V drive mobile-trace # iPhone 13 emulation: 390×664, touch, mobile viewport
 ```
 
-Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `layout-adjust`, `project-list`, `import-export`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
+`DEVICE` picks the browser context: `desktop` (default, 430×932 with mouse input, what every other shipped scenario assumes) or `iphone` (Playwright `devices['iPhone 13']` in Chromium: `isMobile`, `hasTouch`, 3× DPR). Under `iphone`, `h.tapPhoto` sends a touch tap instead of a mouse click and Playwright's `locator.tap()` works. It is still Chromium, so WebKit-only behaviour (iOS Safari gesture events, its handling of `user-scalable=no` and `touch-action`) stays unverified.
+
+Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `layout-adjust`, `project-list`, `import-export`, `rename-ime`, plus `mobile-trace` (touch gestures, bottom bar, tap targets), which needs `DEVICE=iphone`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
 
 ```js
 export default async ({ page, h, flows, FIXTURE }) => {
@@ -70,12 +73,15 @@ Toolkit (`scripts/drive.mjs`, `scripts/flows.mjs`):
 
 | Helper | Does |
 |---|---|
+| `h.check(cond, msg)` | soft assertion: logs `CHECK FAILED`, keeps going, fails the run at the end with every failed check listed |
+| `h.photoToViewport(x, y)` | viewport CSS px of a photo pixel on the canvas (fitted view) |
+| `h.touch.tap(x, y)` / `h.touch.drag([x0,y0], [x1,y1], {steps})` / `h.touch.lift([x0,y0], [x1,y1])` / `h.touch.pinch([cx,cy], fromDist, toDist, {steps, pan})` | real touch input over CDP `Input.dispatchTouchEvent` (`touchStart`/`touchMove`/`touchEnd`) at viewport CSS px; the browser makes its own scroll and zoom decisions. Needs `DEVICE=iphone`. `pinch` puts two fingers on a horizontal line through the centre and spreads them; `pan: [dx, dy]` moves both fingers, and so their midpoint, by that much over the gesture. `lift` lands at the first point and lifts at the second with no `touchMove`, the page seeing only `touchstart` then `touchend` (iOS Safari can stop sending `touchmove` once it scrolls natively) |
 | `h.goto(route)` | load `/`, `/patterns/<id>`, `/layouts/<id>` and wait for the header |
 | `h.see(text)` / `h.notSee(text)` / `h.assert(cond, msg)` | assertions that land in the transcript |
 | `h.shot(name)` | full-page PNG (transitions finished) + ARIA snapshot + current step logged |
 | `h.readDb()` / `h.saveJson(name, v)` | dump IndexedDB (image data URLs truncated) / write JSON evidence |
 | `h.evidencePath(name)` | absolute path inside this drive's evidence dir, for saved downloads and files to upload |
-| `h.tapPhoto(x, y)` | tap a **photo pixel** on the calibration/trace canvas (fitted view) |
+| `h.tapPhoto(x, y)` | tap a **photo pixel** on the calibration/trace canvas (fitted view); a touch tap under `DEVICE=iphone`, a mouse click otherwise |
 | `h.dismissNextDialog()` | next `window.confirm` gets Cancel (default: OK; every dialog is logged) |
 | `flows.createPatternProject(name)` / `createLayoutProject(name)` / `rename(prefix, name)` | home buttons + name editor; return id |
 | `flows.addPhoto()` / `calibrate()` / `tracePiece(name, pts, {foldCenter})` | pattern steps with the fixture |
@@ -88,7 +94,7 @@ Handles: buttons and inputs have Japanese accessible names (`型紙プロジェ�
 
 ## Evidence
 
-Each drive writes `<run-dir>/evidence/<scenario>-<timestamp>/`: `transcript.log` (steps, assertions, dialogs, console errors, page errors, PASS/FAIL), numbered `NN-name.png` + `NN-name.aria.yml`, JSON dumps, and `failure.png` on failure. The command prints the path last. Exit code 0 = PASS.
+Each drive writes `<run-dir>/evidence/<scenario>-<timestamp>/`: `transcript.log` (steps, assertions, dialogs, console errors, page errors, `document load` lines for full page loads, PASS/FAIL), numbered `NN-name.png` + `NN-name.aria.yml`, JSON dumps, and `failure.png` on failure. The command prints the path last. Exit code 0 = PASS.
 
 Proof standards:
 - Drive the real user path: buttons, file chooser, canvas taps. Never write IndexedDB or call store setters to set up state; seed through `flows`.
@@ -105,6 +111,11 @@ $V runs               # list runs, running/stopped, evidence paths
 ```
 
 Evidence is **kept** at `<run-dir>/evidence/` after cleanup; cite that path in reports. Never `pkill node`/`vite`: the user may have their own dev server on 5173.
+
+## Gotchas
+
+- A cold Vite start does not reload the page mid-drive. With `node_modules/.vite/deps` deleted, `launch` alone (no browser yet) pre-bundles all 11 dependencies from Vite's startup scan, `vite.log` has no `optimiz`/`reload` line, and the first drive after the launch sees exactly one `document load` per `h.goto` (checked on 2026-10-11 over 3 cold launches with `layout-fit`, `mobile-trace`, `layout-fit` first). Vite does log the reloads it triggers (`[vite] (client) page reload …`), and every drive logs `document load <url>` for each full page load, so an unexpected reload shows up in both files. If a scenario fails once and passes on rerun, count those lines before blaming warm-up.
+- The two one-off failures blamed on cold starts were neither first drives nor reloads. `layout-fit` placing 1 of 2 pieces ran second in its run (see `features/layout-fit.md`). `mobile-trace` timing out in `waitForURL(/\/patterns\/…/)` ran after another drive in run `20261011-144301-47821`, with the home page fully rendered, the URL still `/`, and nothing in `vite.log`. Both are still unexplained.
 
 ## Feature map
 

@@ -1,5 +1,6 @@
 import { Group, Circle, Text } from 'react-konva'
 import type Konva from 'konva'
+import { VERTEX_HANDLE_NAME } from './stageTransform'
 
 const VISUAL_RADIUS_PX = 3.5
 const SELECTED_VISUAL_RADIUS_PX = 5
@@ -58,7 +59,7 @@ export function VertexHandle({
       onDragMove={(e) => handleDrag(e, onDragMove)}
       onDragEnd={(e) => handleDrag(e, onDragEnd)}
     >
-      <Circle radius={hitRadius} fill="transparent" />
+      <Circle name={VERTEX_HANDLE_NAME} radius={hitRadius} fill="transparent" />
       <Circle
         radius={visualRadius}
         fill={selected ? '#5b21b6' : '#7c3aed'}

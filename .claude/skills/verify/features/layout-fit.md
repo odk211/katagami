@@ -34,7 +34,7 @@ Preconditions:
 
 ## Gotchas
 
-- On 2026-10-11, `残りを自動配置` placed only 1 of 2 pieces once in about 12 runs: `生地に配置: 1 / 2`, with the button enabled again. It did not reproduce on immediate reruns or cold restarts. If it shows up, keep that run's evidence and report it as a possible app bug. Don't rerun until it passes.
+- On 2026-10-11, `残りを自動配置` placed only 1 of 2 pieces once in about 12 runs: `生地に配置: 1 / 2`, with the button enabled again (run `20261011-104157-84048`). It is not a Vite dependency-optimizer reload: that drive was the run's second, after `pattern-trace`, and its `vite.log` has no optimize or reload line (see the cold-start gotcha in `SKILL.md`). The cause is still unknown. The nest normally finishes about 0.1 s after the click, and 15 back-to-back drives plus 3 cold launches did not reproduce it. If it shows up, keep that run's evidence, check the transcript's `document load` lines, and report it as a possible app bug. Don't rerun until it passes.
 - `反映` is disabled when the inputs equal the applied fabric. Change a value before expecting it to enable.
 - Shrinking the fabric keeps existing placements. An overflowing piece is left out of the 配置図 drawing, and 使用率 counts only the pieces fully on the fabric (44.4% for one 400 cm² piece on 30×30).
 - Removing a selected pattern (`削除` on its row) sets `layout` to null. The next visit to 生地・配置 starts with everything 未配置.

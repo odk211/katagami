@@ -26,7 +26,7 @@ export function PatternStepIndicator({ current, onNavigate }: Props) {
             type="button"
             aria-current={isCurrent ? 'step' : undefined}
             onClick={() => onNavigate(step.key)}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`min-h-11 shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors ${
               isCurrent
                 ? 'bg-primary text-white'
                 : isPast
