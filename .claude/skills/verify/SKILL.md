@@ -53,7 +53,7 @@ $V drive layout-fit
 HEADED=1 $V drive pattern-trace    # watch it
 ```
 
-Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `project-list`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
+Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `project-list`, `import-export`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
 
 ```js
 export default async ({ page, h, flows, FIXTURE }) => {
@@ -74,6 +74,7 @@ Toolkit (`scripts/drive.mjs`, `scripts/flows.mjs`):
 | `h.see(text)` / `h.notSee(text)` / `h.assert(cond, msg)` | assertions that land in the transcript |
 | `h.shot(name)` | full-page PNG (transitions finished) + ARIA snapshot + current step logged |
 | `h.readDb()` / `h.saveJson(name, v)` | dump IndexedDB (image data URLs truncated) / write JSON evidence |
+| `h.evidencePath(name)` | absolute path inside this drive's evidence dir, for saved downloads and files to upload |
 | `h.tapPhoto(x, y)` | tap a **photo pixel** on the calibration/trace canvas (fitted view) |
 | `h.dismissNextDialog()` | next `window.confirm` gets Cancel (default: OK; every dialog is logged) |
 | `flows.createPatternProject(name)` / `createLayoutProject(name)` / `rename(prefix, name)` | home buttons + name editor; return id |

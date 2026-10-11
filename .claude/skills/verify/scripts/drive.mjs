@@ -79,6 +79,11 @@ const h = {
     )
   },
 
+  /** Absolute path for a file inside this drive's evidence dir (downloads, files to upload). */
+  evidencePath(name) {
+    return path.join(outDir, name)
+  },
+
   saveJson(name, value) {
     const file = path.join(outDir, `${name}.json`)
     writeFileSync(file, JSON.stringify(value, null, 2))
