@@ -1,0 +1,58 @@
+// Feature: features/layout-fit.md — choose patterns, fabric, auto-nest, report fit / shortage.
+// The fixture square is 20×20 cm = 400 cm². Two sets on 50×50 cm → 800/2500 = 32.0 %.
+export default async ({ page, h, flows }) => {
+  h.step('seed through the UI: pattern project with one 20×20 piece')
+  await flows.patternWithSquare('検証パターン', '前身頃')
+
+  h.step('create layout project, add the pattern twice')
+  const layoutId = await flows.createLayoutProject('検証配置')
+  await flows.addPatternToLayout('検証パターン')
+  await h.see('合計 1 パーツ')
+  await flows.addPatternToLayout('検証パターン')
+  await h.see('合計 2 パーツ')
+  await h.shot('patterns-selected')
+
+  h.step('fabric 50×50 cm, gap 1 cm, 反映')
+  await flows.button('次へ: 生地・配置').click()
+  await flows.currentStep('生地・配置').waitFor()
+  await page.getByRole('spinbutton', { name: '幅（cm）' }).fill('50')
+  await page.getByRole('spinbutton', { name: '高さ（cm）' }).fill('50')
+  await page.getByRole('spinbutton', { name: '裁断余白（cm）' }).fill('1')
+  await flows.button('反映').click()
+  await h.see('未配置（2）')
+  await h.shot('fabric-applied')
+
+  h.step('残りを自動配置')
+  await flows.button('残りを自動配置').click()
+  await h.see('生地に配置: 2 / 2 パーツ')
+  await h.notSee('生地からはみ出しているパーツがあります')
+  await h.shot('auto-nested')
+
+  h.step('結果を確認 → fits')
+  await flows.button('結果を確認').click()
+  await flows.currentStep('結果').waitFor()
+  await h.see('生地は足ります')
+  await h.see('32.0%')
+  await h.see('50 × 50 cm')
+  await h.shot('report-fits')
+
+  h.step('shrink fabric to 30×30 cm and re-check')
+  await flows.button('生地・配置').click()
+  await page.getByRole('spinbutton', { name: '幅（cm）' }).fill('30')
+  await page.getByRole('spinbutton', { name: '高さ（cm）' }).fill('30')
+  await flows.button('反映').click()
+  await h.shot('fabric-shrunk')
+  await flows.button('結果を確認').click()
+  await h.see('生地が足りません')
+  await h.see('不足量の目安')
+  await h.shot('report-shortage')
+
+  h.step('second view: reload and read IndexedDB')
+  await h.goto(`/layouts/${layoutId}`)
+  await page.getByRole('heading', { name: '配置: 検証配置' }).waitFor()
+  const db = h.saveJson('db-after', await h.readDb())
+  const layout = db.projects.find((p) => p.id === layoutId)
+  h.assert(layout.patternProjectIds.length === 2, 'layout references the pattern twice')
+  h.assert(layout.fabricWidthCm === 30 && layout.fabricHeightCm === 30, 'fabric 30×30 persisted')
+  h.assert(layout.layout?.placedPieces.length === 2, 'both pieces still placed')
+}

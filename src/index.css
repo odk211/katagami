@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  --color-primary: #7c3aed;
+  --color-primary-dark: #6d28d9;
+  --color-surface: #fafafa;
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-surface);
+  -webkit-tap-highlight-color: transparent;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#root {
+  min-height: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+.canvas-container {
+  touch-action: pan-y;
+  user-select: none;
+}

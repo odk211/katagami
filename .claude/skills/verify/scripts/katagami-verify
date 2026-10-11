@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Launch, inspect, drive, and tear down an isolated 型紙チェック (Katagami) instance.
+# Usage: katagami-verify <setup|launch|doctor|drive|cleanup|runs> [args]
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$SKILL_DIR/../../.." && pwd)"
+TMP_ROOT="${TMPDIR:-/tmp}"
+BASE="${KATAGAMI_VERIFY_HOME:-${TMP_ROOT%/}/katagami-verify}"
+TOOLS="${KATAGAMI_VERIFY_TOOLS:-$HOME/.cache/katagami-verify-tools}"
+PLAYWRIGHT_VERSION="1.61.1"
+APP_TITLE_TAG='<title>型紙チェック</title>'
+
+die() { echo "katagami-verify: $*" >&2; exit 1; }
+
+resolve_run() {
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    [[ -f "$BASE/latest" ]] || die "no run launched yet (run: katagami-verify launch)"
+    id="$(cat "$BASE/latest")"
+  fi
+  RUN_DIR="$BASE/$id"
+  [[ -f "$RUN_DIR/state.env" ]] || die "unknown run '$id' (no $RUN_DIR/state.env)"
+  # shellcheck disable=SC1091
+  source "$RUN_DIR/state.env"
+}
+
+cmd_setup() {
+  if [[ ! -d "$REPO_DIR/node_modules/vite" ]]; then
+    (cd "$REPO_DIR" && npm install)
+  fi
+  if [[ ! -f "$TOOLS/node_modules/playwright/package.json" ]] ||
+     ! grep -q "\"version\": \"$PLAYWRIGHT_VERSION\"" "$TOOLS/node_modules/playwright/package.json"; then
+    mkdir -p "$TOOLS"
+    (cd "$TOOLS" && { [[ -f package.json ]] || echo '{"private":true}' > package.json; } &&
+      npm install --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION")
+  fi
+  (cd "$TOOLS" && npx playwright install chromium)
+  echo "setup ok: vite in repo, playwright@$PLAYWRIGHT_VERSION in $TOOLS"
+}
+
+free_port() {
+  node -e '
+    const net = require("net");
+    (function tryPort(p) {
+      const s = net.createServer();
+      s.once("error", () => tryPort(p + 1));
+      s.listen(p, "127.0.0.1", () => { s.close(() => console.log(p)); });
+    })(5190);'
+}
+
+cmd_launch() {
+  [[ -d "$REPO_DIR/node_modules/vite" ]] || die "repo deps missing; run: katagami-verify setup"
+  local id port pid scaffold_certs=0
+  id="$(date +%Y%m%d-%H%M%S)-$$"
+  RUN_DIR="$BASE/$id"
+  mkdir -p "$RUN_DIR/evidence" "$RUN_DIR/profile"
+
+  # vite.config.ts reads certs/dev{,-key}.pem unconditionally; certs/ is gitignored.
+  # On a fresh checkout, generate throwaway self-signed certs and remove them on cleanup.
+  if [[ ! -f "$REPO_DIR/certs/dev.pem" || ! -f "$REPO_DIR/certs/dev-key.pem" ]]; then
+    [[ -e "$REPO_DIR/certs/dev.pem" || -e "$REPO_DIR/certs/dev-key.pem" ]] &&
+      die "certs/ is half-populated; fix it by hand before launching"
+    mkdir -p "$REPO_DIR/certs"
+    openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=katagami-verify-scaffold" \
+      -keyout "$REPO_DIR/certs/dev-key.pem" -out "$REPO_DIR/certs/dev.pem" >/dev/null 2>&1
+    scaffold_certs=1
+    echo "created verification scaffolding: certs/dev.pem, certs/dev-key.pem (removed on cleanup)"
+  fi
+
+  port="$(free_port)"
+  cd "$REPO_DIR"
+  nohup node node_modules/vite/bin/vite.js --host 127.0.0.1 --port "$port" --strictPort \
+    > "$RUN_DIR/vite.log" 2>&1 &
+  pid=$!
+  cat > "$RUN_DIR/state.env" <<EOF
+RUN_ID=$id
+PORT=$port
+URL=https://127.0.0.1:$port
+VITE_PID=$pid
+GIT_REV=$(git -C "$REPO_DIR" rev-parse --short HEAD)
+SCAFFOLD_CERTS=$scaffold_certs
+EOF
+  echo "$id" > "$BASE/latest"
+
+  for _ in $(seq 1 60); do
+    if curl -sk --max-time 2 "https://127.0.0.1:$port/" | grep -qF "$APP_TITLE_TAG"; then
+      echo "ready: run=$id url=https://127.0.0.1:$port pid=$pid"
+      echo "evidence dir: $RUN_DIR/evidence"
+      return 0
+    fi
+    kill -0 "$pid" 2>/dev/null || { cat "$RUN_DIR/vite.log" >&2; die "vite exited during startup"; }
+    sleep 0.5
+  done
+  cat "$RUN_DIR/vite.log" >&2
+  die "vite did not answer within 30s (run: katagami-verify cleanup $id)"
+}
+
+cmd_doctor() {
+  resolve_run "${1:-}"
+  local ok=1 owner
+  echo "run:      $RUN_ID"
+  echo "url:      $URL"
+  if kill -0 "$VITE_PID" 2>/dev/null; then echo "process:  ok (pid $VITE_PID)"; else echo "process:  DEAD (pid $VITE_PID)"; ok=0; fi
+  owner="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+  if [[ "$owner" == "$VITE_PID" ]]; then echo "port:     ok ($PORT owned by our vite)"; else echo "port:     NOT OURS ($PORT listener pid='${owner:-none}')"; ok=0; fi
+  if curl -sk --max-time 3 "$URL/" | grep -qF "$APP_TITLE_TAG"; then echo "http:     ok (title 型紙チェック)"; else echo "http:     FAIL ($URL/ did not serve the app)"; ok=0; fi
+  local head_rev; head_rev="$(git -C "$REPO_DIR" rev-parse --short HEAD)"
+  echo "build:    launched at $GIT_REV, HEAD is $head_rev (dev server serves the working tree live)"
+  if [[ -f "$TOOLS/node_modules/playwright/package.json" ]]; then echo "driver:   ok (playwright in $TOOLS)"; else echo "driver:   MISSING (run: katagami-verify setup)"; ok=0; fi
+  echo "evidence: $RUN_DIR/evidence"
+  [[ $ok == 1 ]] && echo "doctor: HEALTHY" || { echo "doctor: UNHEALTHY"; return 1; }
+}
+
+cmd_drive() {
+  local scenario="${1:-}"; shift || true
+  [[ -n "$scenario" ]] || die "usage: katagami-verify drive <scenario.mjs> [run-id]"
+  [[ -f "$scenario" ]] || scenario="$SKILL_DIR/scenarios/$scenario"
+  [[ -f "$scenario" ]] || scenario="$scenario.mjs"
+  [[ -f "$scenario" ]] || die "scenario not found: $scenario"
+  resolve_run "${1:-}"
+  KATAGAMI_URL="$URL" KATAGAMI_RUN_DIR="$RUN_DIR" KATAGAMI_TOOLS="$TOOLS" KATAGAMI_SKILL_DIR="$SKILL_DIR" \
+    node "$SKILL_DIR/scripts/drive.mjs" "$scenario"
+}
+
+cmd_cleanup() {
+  resolve_run "${1:-}"
+  if kill -0 "$VITE_PID" 2>/dev/null; then
+    kill "$VITE_PID"
+    for _ in $(seq 1 20); do kill -0 "$VITE_PID" 2>/dev/null || break; sleep 0.25; done
+    kill -0 "$VITE_PID" 2>/dev/null && kill -9 "$VITE_PID"
+  fi
+  rm -rf "$RUN_DIR/profile"
+  if [[ "$SCAFFOLD_CERTS" == 1 ]]; then
+    rm -f "$REPO_DIR/certs/dev.pem" "$REPO_DIR/certs/dev-key.pem"
+    rmdir "$REPO_DIR/certs" 2>/dev/null || true
+    echo "removed scaffold certs"
+  fi
+  sed -i '' 's/^SCAFFOLD_CERTS=1$/SCAFFOLD_CERTS=0/' "$RUN_DIR/state.env" 2>/dev/null ||
+    sed -i 's/^SCAFFOLD_CERTS=1$/SCAFFOLD_CERTS=0/' "$RUN_DIR/state.env"
+  echo "stopped run $RUN_ID (pid $VITE_PID); evidence kept at $RUN_DIR/evidence"
+}
+
+cmd_runs() {
+  [[ -d "$BASE" ]] || { echo "no runs"; return; }
+  for d in "$BASE"/*/; do
+    [[ -f "$d/state.env" ]] || continue
+    # shellcheck disable=SC1091
+    ( source "$d/state.env"
+      if kill -0 "$VITE_PID" 2>/dev/null; then s=running; else s=stopped; fi
+      echo "$RUN_ID  $s  $URL  evidence=${d}evidence" )
+  done
+}
+
+case "${1:-}" in
+  setup) shift; cmd_setup "$@" ;;
+  launch) shift; cmd_launch "$@" ;;
+  doctor) shift; cmd_doctor "$@" ;;
+  drive) shift; cmd_drive "$@" ;;
+  cleanup) shift; cmd_cleanup "$@" ;;
+  runs) shift; cmd_runs "$@" ;;
+  *) die "usage: katagami-verify <setup|launch|doctor|drive|cleanup|runs> [args]" ;;
+esac
