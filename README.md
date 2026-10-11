@@ -17,12 +17,15 @@ npm install
 npm run dev
 ```
 
-## ビルド
+## 公開
 
-```bash
-npm run build
-npm run preview
-```
+https://odk211.github.io/katagami/
+
+`main` に push すると GitHub Actions（`.github/workflows/deploy.yml`）が lint・テスト・ビルドを行い、GitHub Pages にデプロイする。Actions タブから手動実行もできる。
+
+初回のみ、リポジトリの Settings → Pages → Build and deployment の Source を「GitHub Actions」にする。
+
+ローカルで本番ビルドを確認するときは `npm run build && npm run preview` を実行し、`/katagami/` を開く。
 
 ## テスト
 
