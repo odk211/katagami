@@ -7,7 +7,7 @@ import { createRequire } from 'node:module'
 import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { GEOMETRY } from './fixture-geometry.mjs'
+import { GEOMETRY, PORTRAIT } from './fixture-geometry.mjs'
 
 const { KATAGAMI_URL, KATAGAMI_RUN_DIR, KATAGAMI_TOOLS, KATAGAMI_SKILL_DIR } = process.env
 if (!KATAGAMI_URL || !KATAGAMI_RUN_DIR || !KATAGAMI_TOOLS) {
@@ -28,7 +28,9 @@ const log = (line) => {
   console.log(msg)
 }
 
-const FIXTURE = { ...GEOMETRY, path: path.join(KATAGAMI_SKILL_DIR, 'fixtures', 'pattern-page.png') }
+const fixture = (g) => ({ ...g, path: path.join(KATAGAMI_SKILL_DIR, 'fixtures', g.file) })
+const FIXTURE = fixture(GEOMETRY)
+const PORTRAIT_FIXTURE = fixture(PORTRAIT)
 
 // IndexedDB lives in the browser profile. Each drive starts empty unless PROFILE=<name>
 // names a profile to reuse (e.g. to inspect state a previous drive left behind).
@@ -146,12 +148,12 @@ const h = {
   },
 
   /**
-   * Tap a photo pixel on the calibration/trace Konva canvas. Assumes the fitted view
-   * (the default, or after pressing 全体表示): stage at (0,0), scale = canvas width / photo width.
-   * With DEVICE=iphone it is a real touch tap; otherwise a mouse click.
+   * Tap a pixel of `photo` (default FIXTURE) on the calibration/trace Konva canvas, in the
+   * fitted view (the default, or after pressing 全体表示). With DEVICE=iphone it is a real
+   * touch tap; otherwise a mouse click.
    */
-  async tapPhoto(x, y) {
-    const [vx, vy] = await h.photoToViewport(x, y)
+  async tapPhoto(x, y, photo = FIXTURE) {
+    const [vx, vy] = await h.photoToViewport(x, y, photo)
     if (deviceName === 'iphone') {
       await h.touch.tap(vx, vy)
     } else {
@@ -160,13 +162,28 @@ const h = {
     }
   },
 
-  /** Viewport CSS px of a photo pixel on the calibration/trace canvas, in the fitted view. */
-  async photoToViewport(x, y) {
+  /**
+   * The fitted view of `photo` on the calibration/trace canvas, as the app should draw it:
+   * the whole photo, as large as fits, centered. Photo pixel p sits at (x, y) + p * scale
+   * in viewport CSS px; `box` is the canvas's bounding box.
+   */
+  async fitView(photo = FIXTURE) {
     const canvas = page.locator('.canvas-container canvas').first()
     await canvas.waitFor()
     const box = await canvas.boundingBox()
-    const s = box.width / FIXTURE.width
-    return [box.x + x * s, box.y + y * s]
+    const scale = Math.min(box.width / photo.width, box.height / photo.height)
+    return {
+      box,
+      scale,
+      x: box.x + (box.width - photo.width * scale) / 2,
+      y: box.y + (box.height - photo.height * scale) / 2,
+    }
+  },
+
+  /** Viewport CSS px of a pixel of `photo` on the calibration/trace canvas, in the fitted view. */
+  async photoToViewport(x, y, photo = FIXTURE) {
+    const view = await h.fitView(photo)
+    return [view.x + x * view.scale, view.y + y * view.scale]
   },
 
   // Real touch input through CDP Input.dispatchTouchEvent (needs DEVICE=iphone or another
@@ -253,7 +270,7 @@ log(`scenario ${scenarioName} against ${KATAGAMI_URL}; evidence -> ${outDir}`)
 let code = 0
 try {
   const { default: run } = await import(pathToFileURL(scenarioPath))
-  await run({ page, h, flows, FIXTURE })
+  await run({ page, h, flows, FIXTURE, PORTRAIT_FIXTURE })
   if (failedChecks.length) {
     throw new Error(`${failedChecks.length} check(s) failed:\n  - ${failedChecks.join('\n  - ')}`)
   }

@@ -4,6 +4,7 @@ import {
   clampStagePosition,
   clampView,
   clampZoom,
+  fitPhotoView,
   pinchView,
   viewToImage,
 } from './stageTransform'
@@ -131,5 +132,44 @@ describe('pinchView', () => {
 
   it('keeps the scale when both fingers start on the same point', () => {
     expect(pinchView(start, pair(50, 50, 50, 50), pair(40, 50, 60, 50)).scale).toBe(0.5)
+  })
+})
+
+describe('fitPhotoView', () => {
+  it('fits a portrait photo in a height-capped viewport by height, centered horizontally', () => {
+    const view = fitPhotoView({ width: 356, height: 432 }, { width: 3024, height: 4032 })
+    expect(view.scale).toBeCloseTo(432 / 4032)
+    expect(4032 * view.scale).toBeCloseTo(432)
+    expect(view.x).toBeCloseTo((356 - 3024 * (432 / 4032)) / 2)
+    expect(view.x).toBeGreaterThan(0)
+    expect(view.y).toBeCloseTo(0)
+  })
+
+  it('fits a landscape photo in a tall viewport by width, centered vertically', () => {
+    expect(fitPhotoView({ width: 400, height: 600 }, { width: 1000, height: 500 })).toEqual({
+      scale: 0.4,
+      x: 0,
+      y: 200,
+    })
+  })
+
+  it('fills the viewport with no offset when the aspect ratios match', () => {
+    expect(fitPhotoView({ width: 480, height: 360 }, { width: 960, height: 720 })).toEqual({
+      scale: 0.5,
+      x: 0,
+      y: 0,
+    })
+  })
+
+  it('is a position clampView keeps, so the photo stays centered', () => {
+    const viewport = { width: 356, height: 432 }
+    const photo = { width: 3024, height: 4032 }
+    const view = fitPhotoView(viewport, photo)
+    expect(clampView(view, viewport, photo)).toEqual(view)
+  })
+
+  it('is a scale clampZoom leaves alone for a 48 MP photo on a phone', () => {
+    const view = fitPhotoView({ width: 356, height: 432 }, { width: 6048, height: 8064 })
+    expect(clampZoom(view.scale)).toBe(view.scale)
   })
 })

@@ -56,10 +56,10 @@ DEVICE=iphone $V drive mobile-trace # iPhone 13 emulation: 390×664, touch, mobi
 
 `DEVICE` picks the browser context: `desktop` (default, 430×932 with mouse input, what every other shipped scenario assumes) or `iphone` (Playwright `devices['iPhone 13']` in Chromium: `isMobile`, `hasTouch`, 3× DPR). Under `iphone`, `h.tapPhoto` sends a touch tap instead of a mouse click and Playwright's `locator.tap()` works. It is still Chromium, so WebKit-only behaviour (iOS Safari gesture events, its handling of `user-scalable=no` and `touch-action`) stays unverified.
 
-Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `layout-adjust`, `project-list`, `import-export`, `rename-ime`, plus `mobile-trace` (touch gestures, bottom bar, tap targets), which needs `DEVICE=iphone`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
+Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `layout-adjust`, `project-list`, `import-export`, `rename-ime`, plus `mobile-trace` (touch gestures, bottom bar, tap targets) and `portrait-fit` (a 3:4 portrait photo is fully visible on first display and after 全体表示), which need `DEVICE=iphone`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
 
 ```js
-export default async ({ page, h, flows, FIXTURE }) => {
+export default async ({ page, h, flows, FIXTURE, PORTRAIT_FIXTURE }) => {
   await flows.patternWithSquare('試験')            // project + photo + calibration + 20×20 cm piece, via UI
   await page.getByRole('button', { name: '…' }).click()
   await h.see('expected text')                     // waits, fails the run if never visible
@@ -74,14 +74,15 @@ Toolkit (`scripts/drive.mjs`, `scripts/flows.mjs`):
 | Helper | Does |
 |---|---|
 | `h.check(cond, msg)` | soft assertion: logs `CHECK FAILED`, keeps going, fails the run at the end with every failed check listed |
-| `h.photoToViewport(x, y)` | viewport CSS px of a photo pixel on the canvas (fitted view) |
+| `h.fitView(photo = FIXTURE)` | the fitted view the app should show: `{ box, scale, x, y }`, the whole photo as large as fits, centered; photo pixel p sits at `(x, y) + p * scale` |
+| `h.photoToViewport(x, y, photo = FIXTURE)` | viewport CSS px of a photo pixel on the canvas (fitted view) |
 | `h.touch.tap(x, y)` / `h.touch.drag([x0,y0], [x1,y1], {steps})` / `h.touch.lift([x0,y0], [x1,y1])` / `h.touch.pinch([cx,cy], fromDist, toDist, {steps, pan})` | real touch input over CDP `Input.dispatchTouchEvent` (`touchStart`/`touchMove`/`touchEnd`) at viewport CSS px; the browser makes its own scroll and zoom decisions. Needs `DEVICE=iphone`. `pinch` puts two fingers on a horizontal line through the centre and spreads them; `pan: [dx, dy]` moves both fingers, and so their midpoint, by that much over the gesture. `lift` lands at the first point and lifts at the second with no `touchMove`, the page seeing only `touchstart` then `touchend` (iOS Safari can stop sending `touchmove` once it scrolls natively) |
 | `h.goto(route)` | load `/`, `/patterns/<id>`, `/layouts/<id>` and wait for the header |
 | `h.see(text)` / `h.notSee(text)` / `h.assert(cond, msg)` | assertions that land in the transcript |
 | `h.shot(name)` | full-page PNG (transitions finished) + ARIA snapshot + current step logged |
 | `h.readDb()` / `h.saveJson(name, v)` | dump IndexedDB (image data URLs truncated) / write JSON evidence |
 | `h.evidencePath(name)` | absolute path inside this drive's evidence dir, for saved downloads and files to upload |
-| `h.tapPhoto(x, y)` | tap a **photo pixel** on the calibration/trace canvas (fitted view); a touch tap under `DEVICE=iphone`, a mouse click otherwise |
+| `h.tapPhoto(x, y, photo = FIXTURE)` | tap a **photo pixel** on the calibration/trace canvas (fitted view); a touch tap under `DEVICE=iphone`, a mouse click otherwise |
 | `h.dismissNextDialog()` | next `window.confirm` gets Cancel (default: OK; every dialog is logged) |
 | `flows.createPatternProject(name)` / `createLayoutProject(name)` / `rename(prefix, name)` | home buttons + name editor; return id |
 | `flows.addPhoto()` / `calibrate()` / `tracePiece(name, pts, {foldCenter})` | pattern steps with the fixture |
@@ -90,7 +91,7 @@ Toolkit (`scripts/drive.mjs`, `scripts/flows.mjs`):
 
 Handles: buttons and inputs have Japanese accessible names (`型紙プロジェクトを作成`, `写真を選択`, `実寸（cm）` is a spinbutton, `パーツ名` a textbox, `幅（cm）` / `高さ（cm）` / `裁断余白（cm）`). The step pills live in `nav[aria-label="作業ステップ"]`; the active one has `aria-current="step"`. The project-name editor is `button "<型紙|配置>プロジェクト名を編集"`. Konva canvases have no DOM handles: use `h.tapPhoto` with photo coordinates; layout-canvas drags need `page.mouse` on `.canvas-container canvas` (see `features/layout-adjust.md`).
 
-**Fixture** `fixtures/pattern-page.png` (960×720, regenerate with `node .claude/skills/verify/scripts/make-fixture.mjs`): blue scale bar (100,100)→(500,100) = 20 cm → 20 px/cm; square (100,200)-(500,600) = 20×20 cm; right triangle (600,200),(900,200),(600,600) = 15×20 cm. So expected numbers are exact: calibration 20 px/cm, square area 400 cm².
+**Fixtures** (regenerate both with `node .claude/skills/verify/scripts/make-fixture.mjs`; geometry in `scripts/fixture-geometry.mjs`). `PORTRAIT_FIXTURE` is `fixtures/pattern-page-portrait.png` (720×960, 3:4 like an iPhone photo) with a frame whose red corner marks sit 20 px inside the photo edges; pass it as the last argument of `h.tapPhoto` / `h.photoToViewport` / `h.fitView` and to `flows.addPhoto(PORTRAIT_FIXTURE.path)`. `FIXTURE` is `fixtures/pattern-page.png` (960×720): blue scale bar (100,100)→(500,100) = 20 cm → 20 px/cm; square (100,200)-(500,600) = 20×20 cm; right triangle (600,200),(900,200),(600,600) = 15×20 cm. So expected numbers are exact: calibration 20 px/cm, square area 400 cm².
 
 ## Evidence
 

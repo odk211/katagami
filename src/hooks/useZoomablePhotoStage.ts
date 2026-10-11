@@ -7,7 +7,7 @@ import {
   canWheelPanStageY,
   clampStagePosition,
   clampView,
-  fitStageToPhoto,
+  fitPhotoView,
   isClientPointInRect,
   isClientPointOverImage,
   isPointerOverImage,
@@ -83,14 +83,19 @@ export function useZoomablePhotoStage(
   const fitView = useCallback(() => {
     const stage = stageRef.current
     if (!stage) return
-    fitStageToPhoto(stage, photoWidth, viewport.width)
-    clampStagePosition(stage, viewport.width, viewport.height, photoWidth, photoHeight)
+    const view = fitPhotoView(
+      { width: viewport.width, height: viewport.height },
+      { width: photoWidth, height: photoHeight },
+    )
+    stage.scale({ x: view.scale, y: view.scale })
+    stage.position({ x: view.x, y: view.y })
+    stage.batchDraw()
     syncScale()
   }, [photoWidth, photoHeight, viewport.width, viewport.height, syncScale])
 
   useEffect(() => {
     fitView()
-  }, [fitView, viewport.width])
+  }, [fitView])
 
   const zoomIn = useCallback(() => {
     const stage = stageRef.current

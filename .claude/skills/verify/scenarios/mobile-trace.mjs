@@ -43,10 +43,11 @@ export default async ({ page, h, flows, FIXTURE }) => {
 
   h.step('pinch-out 2× around the canvas centre while the midpoint pans, during calibration')
   await canvas.scrollIntoViewIfNeeded()
-  const box0 = await canvas.boundingBox()
-  const fitScale = box0.width / FIXTURE.width
+  const fit0 = await h.fitView()
+  const box0 = fit0.box
+  const fitScale = fit0.scale
   const center = [box0.x + box0.width / 2, box0.y + box0.height / 2]
-  const anchor = [(center[0] - box0.x) / fitScale, (center[1] - box0.y) / fitScale]
+  const anchor = [(center[0] - fit0.x) / fitScale, (center[1] - fit0.y) / fitScale]
   const pan = [40, 30]
   const yBeforePinch = await scrollY()
   await h.touch.pinch(center, 80, 160, { pan })

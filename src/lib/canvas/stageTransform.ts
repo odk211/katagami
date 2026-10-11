@@ -182,13 +182,12 @@ export function zoomStageAtCenter(
   zoomStageAtPoint(stage, viewportWidth / 2, viewportHeight / 2, factor)
 }
 
-export function fitStageToPhoto(
-  stage: Konva.Stage,
-  photoWidth: number,
-  viewportWidth: number,
-): void {
-  const scale = viewportWidth / photoWidth
-  stage.scale({ x: scale, y: scale })
-  stage.position({ x: 0, y: 0 })
-  stage.batchDraw()
+/** View that shows the whole photo as large as possible, centered on the axis it leaves room on. */
+export function fitPhotoView(viewport: Size, photo: Size): StageView {
+  const scale = Math.min(viewport.width / photo.width, viewport.height / photo.height)
+  return {
+    scale,
+    x: (viewport.width - photo.width * scale) / 2,
+    y: (viewport.height - photo.height * scale) / 2,
+  }
 }
