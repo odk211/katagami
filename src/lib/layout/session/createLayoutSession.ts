@@ -45,8 +45,11 @@ export function createLayoutSession(
   let status: LayoutSessionStatus = { kind: 'idle' }
   let issues: LayoutIssues = EMPTY_ISSUES
   let issuesGeneration = 0
+  let issuesStarted = false
+  let snapshot = buildSnapshot()
 
   function notify() {
+    snapshot = buildSnapshot()
     for (const listener of listeners) listener()
   }
 
@@ -55,7 +58,7 @@ export function createLayoutSession(
     notify()
   }
 
-  function getSnapshot(): LayoutSessionSnapshot {
+  function buildSnapshot(): LayoutSessionSnapshot {
     return {
       layout: buildLayout(
         placedPieces,
@@ -105,8 +108,6 @@ export function createLayoutSession(
     void refreshIssues()
     await persist(next)
   }
-
-  void refreshIssues()
 
   const actions = {
     async placeFromList(piece: Piece) {
@@ -187,9 +188,15 @@ export function createLayoutSession(
   }
 
   return {
-    getSnapshot,
+    getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener)
+      // Started by the first subscriber, so a session that React creates during render
+      // and then discards never computes anything.
+      if (!issuesStarted) {
+        issuesStarted = true
+        void refreshIssues()
+      }
       return () => listeners.delete(listener)
     },
     actions,

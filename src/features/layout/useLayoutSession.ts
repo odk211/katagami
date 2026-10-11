@@ -1,16 +1,10 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createLayoutSession } from '../../lib/layout/session/createLayoutSession'
 import type {
   LayoutPersistencePort,
-  LayoutSession,
   LayoutSessionConfig,
 } from '../../lib/layout/session/types'
-import type { Layout } from '../../types'
-import { sanitizePlacedPieces } from '../../lib/nesting/stackLayout'
-import {
-  defaultLayoutPersistence,
-  layoutFromSnapshot,
-} from './persistence/defaultLayoutPersistence'
+import { defaultLayoutPersistence } from './persistence/defaultLayoutPersistence'
 
 export type UseLayoutSessionOptions = LayoutSessionConfig & {
   persistence?: LayoutPersistencePort
@@ -27,72 +21,24 @@ export function useLayoutSession(options: UseLayoutSessionOptions) {
     persistence = defaultLayoutPersistence,
   } = options
 
-  const bootstrapLayoutRef = useRef<Layout | null | undefined>(undefined)
-  const [hydrationGeneration, setHydrationGeneration] = useState(0)
-
-  if (bootstrapLayoutRef.current === undefined) {
-    bootstrapLayoutRef.current = savedLayout
-  }
-
-  useEffect(() => {
-    if (bootstrapLayoutRef.current === null && savedLayout) {
-      bootstrapLayoutRef.current = savedLayout
-      setHydrationGeneration((n) => n + 1)
-    }
-  }, [savedLayout])
-
-  const bootstrapLayout = bootstrapLayoutRef.current ?? null
-
-  const sessionRef = useRef<LayoutSession>(
-    createLayoutSession(
-      {
-        projectId,
-        pieces,
-        fabricWidthCm,
-        fabricHeightCm,
-        cuttingGapCm,
-        savedLayout: bootstrapLayout,
-      },
+  // savedLayout is left out: every persist writes it back to the store, so including it would
+  // recreate the session (and drop the selection) after each edit.
+  const key = [projectId, fabricWidthCm, fabricHeightCm, cuttingGapCm, ...pieces.map((p) => p.id)]
+    .join('\0')
+  const create = () => ({
+    key,
+    session: createLayoutSession(
+      { projectId, pieces, fabricWidthCm, fabricHeightCm, cuttingGapCm, savedLayout },
       persistence,
     ),
-  )
-  const [, rerender] = useReducer((n: number) => n + 1, 0)
+  })
+  const [current, setCurrent] = useState(create)
+  if (current.key !== key) setCurrent(create())
+  const { session } = current
+
+  const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [containerWidth, setContainerWidth] = useState(320)
-
-  const piecesKey = pieces.map((p) => p.id).join('\0')
-
-  useEffect(() => {
-    const prev = sessionRef.current.getSnapshot()
-    const carriedLayout = layoutFromSnapshot(
-      sanitizePlacedPieces(prev.placedPieces, pieces),
-      fabricWidthCm,
-      fabricHeightCm,
-      cuttingGapCm,
-    )
-
-    const savedForSession =
-      carriedLayout.placedPieces.length > 0 ? carriedLayout : bootstrapLayoutRef.current ?? null
-
-    const session = createLayoutSession(
-      {
-        projectId,
-        pieces,
-        fabricWidthCm,
-        fabricHeightCm,
-        cuttingGapCm,
-        savedLayout: savedForSession,
-      },
-      persistence,
-    )
-
-    sessionRef.current = session
-    const unsub = session.subscribe(() => rerender())
-    rerender()
-    return unsub
-    // savedLayout is bootstrap-only; persist updates must not recreate the session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, fabricWidthCm, fabricHeightCm, cuttingGapCm, piecesKey, hydrationGeneration])
 
   useEffect(() => {
     const el = containerRef.current
@@ -104,13 +50,10 @@ export function useLayoutSession(options: UseLayoutSessionOptions) {
     return () => observer.disconnect()
   }, [])
 
-  const snapshot = sessionRef.current.getSnapshot()
-  const viewport = sessionRef.current.viewport(containerWidth)
-
   return {
     ...snapshot,
-    ...sessionRef.current.actions,
-    viewport,
+    ...session.actions,
+    viewport: session.viewport(containerWidth),
     containerRef,
     isBusy:
       snapshot.status.kind === 'nesting' ||

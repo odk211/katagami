@@ -12,9 +12,21 @@ type Props = {
 
 type PatternSummary = PatternProject & { pieceCount: number }
 
+// Kept out of the component: the React Compiler assumes a handler that a `.map` render callback
+// wraps with a render value (`() => removeAt(index)`) may run during render, and rejects Date.now() in it.
+async function saveSelection(
+  layoutProjectId: string,
+  changes: Pick<LayoutProject, 'patternProjectIds'> & Partial<Pick<LayoutProject, 'layout'>>,
+) {
+  await db.projects.update(layoutProjectId, {
+    ...changes,
+    updatedAt: Date.now(),
+  } as Partial<LayoutProject>)
+  useProjectStore.getState().updateProject(changes)
+}
+
 export function PatternSelectionView({ layoutProjectId, onReady }: Props) {
   const project = useProjectStore((s) => (s.project?.kind === 'layout' ? s.project : null))
-  const updateProject = useProjectStore((s) => s.updateProject)
   const [available, setAvailable] = useState<PatternSummary[]>([])
 
   useEffect(() => {
@@ -40,23 +52,17 @@ export function PatternSelectionView({ layoutProjectId, onReady }: Props) {
     return sum + (found?.pieceCount ?? 0)
   }, 0)
 
-  async function addPattern(patternProjectId: string) {
-    const patternProjectIds = [...layoutProject.patternProjectIds, patternProjectId]
-    await db.projects.update(layoutProjectId, {
-      patternProjectIds,
-      updatedAt: Date.now(),
-    } as Partial<LayoutProject>)
-    updateProject({ patternProjectIds })
+  function addPattern(patternProjectId: string) {
+    return saveSelection(layoutProjectId, {
+      patternProjectIds: [...layoutProject.patternProjectIds, patternProjectId],
+    })
   }
 
-  async function removeAt(index: number) {
-    const patternProjectIds = layoutProject.patternProjectIds.filter((_, i) => i !== index)
-    await db.projects.update(layoutProjectId, {
-      patternProjectIds,
+  function removeAt(index: number) {
+    return saveSelection(layoutProjectId, {
+      patternProjectIds: layoutProject.patternProjectIds.filter((_, i) => i !== index),
       layout: null,
-      updatedAt: Date.now(),
-    } as Partial<LayoutProject>)
-    updateProject({ patternProjectIds, layout: null })
+    })
   }
 
   return (

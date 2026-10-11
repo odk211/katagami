@@ -52,6 +52,7 @@ export type LayoutViewport = {
 }
 
 export interface LayoutSession {
+  /** Same object until the session notifies subscribers, as useSyncExternalStore requires. */
   getSnapshot(): LayoutSessionSnapshot
   subscribe(listener: () => void): () => void
   actions: LayoutSessionActions

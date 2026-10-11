@@ -53,7 +53,7 @@ $V drive layout-fit
 HEADED=1 $V drive pattern-trace    # watch it
 ```
 
-Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `project-list`, `import-export`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
+Shipped scenarios (one per feature in `features/`): `pattern-trace`, `layout-fit`, `layout-adjust`, `project-list`, `import-export`. To prove a new change, write a scenario in the scratchpad (or add it to `scenarios/` if it belongs in the map) with this shape:
 
 ```js
 export default async ({ page, h, flows, FIXTURE }) => {

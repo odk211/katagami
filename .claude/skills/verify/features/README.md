@@ -32,5 +32,5 @@ Each feature file has an H1, a one-paragraph description, then exactly four H2s 
 - [Project list](./project-list.md): create, open, rename, and delete pattern and layout projects, including the cascade from a deleted pattern. Scenario `project-list`.
 - [Pattern capture, calibration and trace](./pattern-trace.md): add a photo, calibrate, trace normal and fold-center pieces, edit, copy, mirror-copy, and delete them. Scenario `pattern-trace`.
 - [Layout fit check](./layout-fit.md): choose patterns, enter fabric, auto-place, and read the fit or shortage report. Scenario `layout-fit`.
-- [Manual layout adjustment](./layout-adjust.md): add one piece from 未配置, drag, rotate, return it to 未配置, and see overlap and overflow warnings. No scenario yet; the recipe is in the file.
+- [Manual layout adjustment](./layout-adjust.md): add one piece from 未配置, drag, rotate, return it to 未配置, and see overlap and overflow warnings. Scenario `layout-adjust`.
 - [Backup import and export](./import-export.md): export every project to a JSON file, import it back with confirmation, re-import without duplicates, and reject invalid files. Scenario `import-export`.

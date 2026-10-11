@@ -36,6 +36,8 @@ export function LayoutProjectPage() {
     })
   }, [projectId, navigate, reset, setProject])
 
+  const patternIdsKey = project?.kind === 'layout' ? project.patternProjectIds.join('\0') : ''
+
   useEffect(() => {
     if (!projectId || project?.kind !== 'layout') return
     getLayoutProjectWithDetails(projectId).then((data) => {
@@ -44,7 +46,7 @@ export function LayoutProjectPage() {
         setSlotLegend(data.slotLegend)
       }
     })
-  }, [projectId, project?.kind, project?.kind === 'layout' ? project.patternProjectIds.join('\0') : ''])
+  }, [projectId, project?.kind, patternIdsKey])
 
   if (loading || !project || project.kind !== 'layout' || !projectId) {
     return <p className="text-center text-sm text-gray-500 py-8">読み込み中…</p>

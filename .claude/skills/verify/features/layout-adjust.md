@@ -21,7 +21,7 @@ On the 生地・配置 step the user can place pieces one at a time from the 未
 
 Preconditions:
 
-- Seed as in `layout-fit.md` up to `反映` with fabric 50×50 and two pieces 未配置. There is no shipped scenario; write one in the scratchpad.
+- Seed as in `layout-fit.md` up to `反映` with fabric 50×50 and two pieces 未配置.
 
 - **Place one.** Click `page.getByRole('listitem').getByRole('button', { name: '前身頃' }).first()`. `生地に配置: 1 / 2 パーツ（未配置 1）`.
 - **Select.** Click the piece on `.canvas-container canvas`. Fabric cm × (canvas width / fabric width cm) gives CSS px; the first piece sits near the top-left. `－15°`, `＋15°` and `未配置に戻す` appear.
@@ -29,11 +29,14 @@ Preconditions:
 - **Drag.** Use `page.mouse.move/down/move/up` from the piece centre to a point outside the fabric edge. The overflow banner appears and `x`/`y` change in the DB.
 - **Overlap.** Place the second piece and drag it onto the first. The overlap banner appears.
 - **Unplace.** Select a piece and click `未配置に戻す`. It returns to `未配置（N）` and leaves `placedPieces`.
+- **Fabric change.** Enter 60 × 55 and click `反映`. The remaining placement keeps its `x`, `y` and `rotation`, and `layout` carries the new fabric size.
 - **Proof.** `h.shot` after each step, plus a reload of `/layouts/<id>` (go back to the 生地・配置 pill) and `h.readDb()` to prove the positions persisted.
+- **Scenario.** `$V drive layout-adjust`. Evidence: `01-placed-one` … `08-after-reload`, `db-after.json`.
 
 ## Gotchas
 
 - The layout canvas has no DOM handles per piece, so taps and drags are coordinates. Compute them from the fabric size and the canvas box, never from fixed pixels.
 - `残りを自動配置` is disabled when nothing is 未配置, and it never moves pieces that are already placed.
 - The rotate and unplace buttons exist only while a piece is selected. Select it again after a reload.
+- Changing the fabric clears the selection, so the rotate and unplace buttons disappear after `反映`.
 - After a reload the page opens on 型紙選択. Click the `生地・配置` pill to see the canvas.

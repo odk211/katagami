@@ -30,10 +30,6 @@ export function EditableProjectName({ prefix, name, onSave }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!editing) setDraft(name)
-  }, [name, editing])
-
-  useEffect(() => {
     if (editing) inputRef.current?.focus()
   }, [editing])
 
@@ -83,7 +79,10 @@ export function EditableProjectName({ prefix, name, onSave }: Props) {
       type="button"
       className="mb-4 flex min-w-0 max-w-full items-center gap-2 text-left"
       aria-label={`${prefix}プロジェクト名を編集`}
-      onClick={() => setEditing(true)}
+      onClick={() => {
+        setDraft(name)
+        setEditing(true)
+      }}
     >
       <h2 className="min-w-0 truncate font-semibold text-gray-900">
         {prefix}: {name}
