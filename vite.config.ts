@@ -5,10 +5,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const https = {
-  key: fs.readFileSync(path.resolve(__dirname, 'certs/dev-key.pem')),
-  cert: fs.readFileSync(path.resolve(__dirname, 'certs/dev.pem')),
-}
+const keyPath = path.resolve(__dirname, 'certs/dev-key.pem')
+const certPath = path.resolve(__dirname, 'certs/dev.pem')
+const https =
+  fs.existsSync(keyPath) && fs.existsSync(certPath)
+    ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }
+    : undefined
 
 export default defineConfig({
   server: {
