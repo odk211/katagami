@@ -62,6 +62,8 @@ export function EditableProjectName({ prefix, name, onSave }: Props) {
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => void commit()}
           onKeyDown={(e) => {
+            // IME key events report keyCode 229, including the Enter Safari sends after committing a conversion.
+            if (e.keyCode === 229) return
             if (e.key === 'Enter') {
               e.preventDefault()
               void commit()

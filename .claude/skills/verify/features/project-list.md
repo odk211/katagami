@@ -7,6 +7,7 @@ The home screen lists 型紙プロジェクト and 配置プロジェクト in t
 - `list-create-pattern` creates a 型紙プロジェクト named `型紙 <date>` and opens `/patterns/<id>`.
 - `list-create-layout` creates a 配置プロジェクト named `配置 <date>` and opens `/layouts/<id>`.
 - `list-rename` renames a project from its page header; the list shows the new name.
+- `list-rename-ime` keeps the name editor open when Enter or Escape confirms or cancels an IME conversion (Chromium and Safari key orders); scenario `rename-ime`.
 - `list-delete-cancel` closes the confirmation with キャンセル and keeps the project.
 - `list-delete-confirm` deletes the project after confirmation.
 - `list-delete-cascade` removes a deleted pattern from the layouts that referenced it.
@@ -36,6 +37,7 @@ Preconditions:
 
 ## Gotchas
 
+- `page.keyboard` can't type through an IME. Drive conversions over CDP (`Input.imeSetComposition`, `Input.insertText`, and `Input.dispatchKeyEvent` with `windowsVirtualKeyCode: 229`) as `scenarios/rename-ime.mjs` does.
 - Default names include only the date, so two projects created on the same day share a name. Rename before you locate a card by text.
 - There are two `削除` buttons in play once the dialog is open (the card's and the dialog's). Scope to the `alertdialog`.
 - The dialog's confirm label changes to `削除中…` while deleting. Wait for the dialog to detach, not for the label.
