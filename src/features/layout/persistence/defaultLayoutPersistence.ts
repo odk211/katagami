@@ -12,7 +12,3 @@ export const defaultLayoutPersistence: LayoutPersistencePort = {
     useProjectStore.getState().setLayout(layout)
   },
 }
-
-export const noOpLayoutPersistence: LayoutPersistencePort = {
-  async save() {},
-}
