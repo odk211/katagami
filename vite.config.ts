@@ -12,7 +12,8 @@ const https =
     ? { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }
     : undefined
 
-export default defineConfig({
+export default defineConfig(({ command, isPreview }) => ({
+  base: command === 'serve' && !isPreview ? '/' : '/katagami/',
   server: {
     host: true,
     https,
@@ -52,4 +53,4 @@ export default defineConfig({
       },
     }),
   ],
-})
+}))
